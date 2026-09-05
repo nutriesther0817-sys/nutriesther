@@ -1,9 +1,8 @@
 import { sql } from "drizzle-orm";
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
-export const notes = sqliteTable("notes", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  title: text("title").notNull(),
-  content: text("content").notNull().default(""),
-  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-});
+export const studentRegistrations = sqliteTable("student_registrations", {
+  id: integer("id").primaryKey({ autoIncrement: true }), fullName: text("full_name").notNull(),
+  cedula: text("cedula").notNull(), phone: text("phone").notNull(), email: text("email").notNull(),
+  consentAt: text("consent_at").notNull().default(sql`CURRENT_TIMESTAMP`), createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [uniqueIndex("idx_student_registrations_cedula").on(table.cedula), uniqueIndex("idx_student_registrations_email").on(table.email)]);

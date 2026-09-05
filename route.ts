@@ -1,58 +1,21 @@
-import { desc } from "drizzle-orm";
-import { getDb } from "../../../../../db";
-import { notes } from "../../../db/schema";
+import { env } from "cloudflare:workers";
 
-function toRouteErrorMessage(error: unknown) {
-  const message = error instanceof Error ? error.message : "Unexpected error";
-  const detail =
-    error instanceof Error && error.cause instanceof Error ? error.cause.message : "";
-  const combined = `${message}\n${detail}`;
-
-  if (combined.includes("no such table") || combined.includes('from "notes"')) {
-    return "The notes table is unavailable. Generate the migration locally with `npm run db:generate`, then deploy so the platform can apply the generated SQL to the real D1 database.";
-  }
-
-  return message;
-}
-
-export async function GET() {
-  try {
-    const db = getDb();
-    const rows = await db
-      .select()
-      .from(notes)
-      .orderBy(desc(notes.createdAt), desc(notes.id))
-      .limit(20);
-
-    return Response.json({ notes: rows });
-  } catch (error) {
-    return Response.json(
-      { error: toRouteErrorMessage(error) },
-      { status: 500 }
-    );
-  }
-}
+function clean(value: unknown, max: number) { return typeof value === "string" ? value.trim().replace(/\s+/g, " ").slice(0, max) : ""; }
 
 export async function POST(request: Request) {
   try {
-    const payload = (await request.json()) as {
-      title?: string;
-      content?: string;
-    };
-    const title = payload.title?.trim() ?? "";
-    const content = payload.content?.trim() ?? "";
-
-    if (!title) {
-      return Response.json({ error: "title is required" }, { status: 400 });
+    const body = (await request.json()) as Record<string, unknown>;
+    const name = clean(body.name, 120); const cedula = clean(body.cedula, 30);
+    const phone = clean(body.phone, 25); const email = clean(body.email, 160).toLowerCase();
+    const consent = body.consent === "yes";
+    if (name.length < 3 || cedula.length < 4 || phone.length < 7 || !/^\S+@\S+\.\S+$/.test(email) || !consent) {
+      return Response.json({ error: "Completa correctamente todos los campos y acepta el uso de datos." }, { status: 400 });
     }
-
-    const db = getDb();
-    const [note] = await db.insert(notes).values({ title, content }).returning();
-    return Response.json({ note }, { status: 201 });
+    await env.DB.prepare(`INSERT INTO student_registrations (full_name, cedula, phone, email, consent_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)`).bind(name, cedula, phone, email).run();
+    return Response.json({ success: true }, { status: 201 });
   } catch (error) {
-    return Response.json(
-      { error: toRouteErrorMessage(error) },
-      { status: 500 }
-    );
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("UNIQUE constraint failed")) return Response.json({ error: "Ya existe un registro con esta cédula o correo electrónico." }, { status: 409 });
+    return Response.json({ error: "No pudimos guardar tu registro. Intenta nuevamente." }, { status: 500 });
   }
 }
